@@ -40,12 +40,13 @@
 <body>
   <div id="root"></div>
 
-  <!-- React 18 + Babel (for JSX in-browser; zero build) -->
+  <!-- React 18 UMD + Babel Standalone -->
   <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-  <script type="text/babel">
+  <!-- IMPORTANT: add data-presets so JSX compiles -->
+  <script type="text/babel" data-presets="env,react">
     const {useEffect,useMemo,useRef,useState} = React
 
     const emptyProduct = () => ({
@@ -71,10 +72,8 @@
 
     const STORAGE_KEY = 'liquor_store_products_v1'
     const SETTINGS_KEY = 'liquor_store_settings_v2'
-
     const saveToStorage = (products) => localStorage.setItem(STORAGE_KEY, JSON.stringify(products))
     const loadFromStorage = () => { try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]') } catch { return [] } }
-
     const saveSettings = (settings) => localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings))
     const loadSettings = () => { try { return JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') } catch { return {} } }
 
@@ -97,15 +96,12 @@
       return 'Other'
     }
 
-    // CSV helpers
     function parseCSV(text) {
       const rows = []; let row = [], field = '', inQuotes = false
       for (let i=0;i<text.length;i++) {
         const c = text[i]
-        if (c === '"') {
-          if (inQuotes && text[i+1] === '"') { field += '"'; i++ }
-          else inQuotes = !inQuotes
-        } else if (c === ',' && !inQuotes) { row.push(field); field='' }
+        if (c === '"') { if (inQuotes && text[i+1] === '"') { field += '"'; i++ } else inQuotes = !inQuotes }
+        else if (c === ',' && !inQuotes) { row.push(field); field='' }
         else if ((c === '\n' || c === '\r') && !inQuotes) { if (field.length || row.length) { row.push(field); rows.push(row); row=[]; field='' } }
         else field += c
       }
@@ -116,9 +112,7 @@
       const esc = (s) => { const str = s == null ? '' : String(s); return /[",\n]/.test(str) ? `"${str.replace(/"/g,'""')}"` : str }
       return rows.map(r => r.map(esc).join(',')).join('\n')
     }
-    const CSV_HEADERS = [
-      'name','brand','category','subcategory','size','abv','country','region','vendor','sku','upc','cost_price','sell_price','description','tasting_notes','food_pairings','on_hand'
-    ]
+    const CSV_HEADERS = ['name','brand','category','subcategory','size','abv','country','region','vendor','sku','upc','cost_price','sell_price','description','tasting_notes','food_pairings','on_hand']
 
     const sampleProducts = [
       { id: crypto.randomUUID(), name: 'Casa Verde Blanco', brand: 'Casa Verde', category: 'Tequila/Mezcal', subcategory: 'Tequila Blanco', size: '750ml', abv: '40%', country: 'Mexico', region: 'Jalisco', vendor: "Southern Glazer's", sku: 'TEQ-001', upc: '0123456789012', cost_price: 24.5, sell_price: 39.99, description: 'Vibrant agave with citrus and pepper.', tasting_notes: 'Lime zest, white pepper, cooked agave', food_pairings: 'Tacos al pastor, ceviche', on_hand: 18 },
@@ -147,11 +141,11 @@
       useEffect(()=>{ saveToStorage(products) }, [products])
       useEffect(()=>{ saveSettings(store) }, [store])
 
-      const categories = useMemo(()=> [''].concat([...new Set(products.map(p=> p.category || guessCategory(p.name)))].sort()), [products])
-      const countries  = useMemo(()=> [''].concat([...new Set(products.map(p=> p.country || ''))].filter(Boolean).sort()), [products])
-      const vendors  = useMemo(()=> [''].concat([...new Set(products.map(p=> p.vendor || ''))].filter(Boolean).sort()), [products])
+      const categories = React.useMemo(()=> [''].concat([...new Set(products.map(p=> p.category || guessCategory(p.name)))].sort()), [products])
+      const countries  = React.useMemo(()=> [''].concat([...new Set(products.map(p=> p.country || ''))].filter(Boolean).sort()), [products])
+      const vendors  = React.useMemo(()=> [''].concat([...new Set(products.map(p=> p.vendor || ''))].filter(Boolean).sort()), [products])
 
-      const filtered = useMemo(()=>{
+      const filtered = React.useMemo(()=>{
         const q = query.trim().toLowerCase()
         return products.filter(p=>{
           const inQ = !q || [p.name,p.brand,p.category,p.subcategory,p.country,p.region,p.vendor,p.tasting_notes,p.description,p.food_pairings,p.sku,p.upc]
@@ -170,7 +164,7 @@
         })
       }, [products, query, filters])
 
-      const totals = useMemo(()=>{
+      const totals = React.useMemo(()=>{
         const cost = filtered.reduce((s,p)=> s + (toNumber(p.cost_price)||0)*(toNumber(p.on_hand)||0), 0)
         const retail = filtered.reduce((s,p)=> s + (toNumber(p.sell_price)||0)*(toNumber(p.on_hand)||0), 0)
         const gp = retail - cost
@@ -179,14 +173,6 @@
 
       const startAdd = ()=> setEditing({...emptyProduct(), category: categories[1] || 'Other'})
       const startEdit = (p)=> setEditing({...p})
-      const saveEdit = ()=> {
-        setProducts(prev=>{
-          const i = prev.findIndex(x=> x.id===editing.id)
-          if (i>=0) { const copy=[...prev]; copy[i]=editing; return copy }
-          return [editing, ...prev]
-        })
-        setEditing(null)
-      }
       const remove = (id)=> setProducts(prev=> prev.filter(p=> p.id!==id))
       const adjustStock = (id, delta)=> setProducts(prev=> prev.map(p=> p.id===id ? {...p, on_hand: (toNumber(p.on_hand)||0)+delta } : p))
 
@@ -244,6 +230,7 @@
           <div className="big">{value}</div>
         </div></div>
       )
+
       const PriceBits = ({p})=>{
         const cost = toNumber(p.cost_price)
         const sell = toNumber(p.sell_price)
@@ -266,23 +253,23 @@
               <div>
                 <div className="row" style={{gap:8}}>
                   <div style={{fontWeight:700, fontSize:16}}>{p.name || <span className="muted">(No name)</span>}</div>
-                  {toNumber(p.on_hand)<=0 ? <span className="badge red" style={{background:'transparent', border:'1px solid var(--danger)', color:'var(--danger)'}}>Out of stock</span> : <span className="badge">{p.on_hand} on hand</span>}
+                  {toNumber(p.on_hand)<=0 ? <span className="badge red" style="background:transparent;border:1px solid var(--danger);color:var(--danger)">Out of stock</span> : <span className="badge">{p.on_hand} on hand</span>}
                 </div>
-                <div className="muted" style={{fontSize:13}}>{p.brand} · {(p.category || guessCategory(p.name))}{p.subcategory?` · ${p.subcategory}`:''} · {p.size}</div>
+                <div className="muted" style="font-size:13px">{p.brand} · {(p.category || guessCategory(p.name))}{p.subcategory?` · ${p.subcategory}`:''} · {p.size}</div>
               </div>
               {admin && (
                 <div className="row">
                   <button className="btn" onClick={()=>setEditing({...p})}>Edit</button>
-                  <button className="btn" style={{color:'#ef4444'}} onClick={()=> setProducts(prev=> prev.filter(x=> x.id!==p.id))}>Delete</button>
+                  <button className="btn" style="color:#ef4444" onClick={()=> setProducts(prev=> prev.filter(x=> x.id!==p.id))}>Delete</button>
                 </div>
               )}
             </div>
-            <div style={{height:8}}/>
+            <div style="height:8px"></div>
             <PriceBits p={p}/>
-            <div style={{fontSize:13, marginTop:6}}>{p.description}</div>
-            <div style={{fontSize:13}}><strong>Tasting:</strong> {p.tasting_notes || '—'}</div>
-            <div style={{fontSize:13}}><strong>Pairs with:</strong> {p.food_pairings || '—'}</div>
-            <div className="muted" style={{fontSize:12}}>Origin: {p.country}{p.region?`, ${p.region}`:''} · Vendor: {p.vendor || '—'} · SKU: {p.sku || '—'} · UPC: {p.upc || '—'}</div>
+            <div style="font-size:13px;margin-top:6px">{p.description}</div>
+            <div style="font-size:13px"><strong>Tasting:</strong> {p.tasting_notes || '—'}</div>
+            <div style="font-size:13px"><strong>Pairs with:</strong> {p.food_pairings || '—'}</div>
+            <div className="muted" style="font-size:12px">Origin: {p.country}{p.region?`, ${p.region}`:''} · Vendor: {p.vendor || '—'} · SKU: {p.sku || '—'} · UPC: {p.upc || '—'}</div>
             {admin && (
               <div className="row">
                 <button className="btn" onClick={()=>adjustStock(p.id, 1)}>+1</button>
@@ -296,7 +283,7 @@
       const ProductEditor = () => editing && (
         <div className="tags-modal" onClick={()=> setEditing(null)}>
           <div className="tags-sheet" onClick={e=> e.stopPropagation()}>
-            <div className="row" style={{justifyContent:'space-between', marginBottom:8}}>
+            <div className="row" style="justify-content:space-between;margin-bottom:8px">
               <strong>{products.some(p=>p.id===editing?.id)?'Edit Product':'Add Product'}</strong>
               <div className="row">
                 <button className="btn" onClick={()=> setEditing(null)}>Cancel</button>
@@ -310,25 +297,24 @@
                 }}>Save</button>
               </div>
             </div>
-            <div className="row" style={{flexWrap:'wrap', gap:10}}>
+            <div className="row" style="flex-wrap:wrap;gap:10px">
               {['name','brand','category','subcategory','size','abv','country','region','vendor','sku','upc','cost_price','sell_price','on_hand'].map(key => (
-                <div key={key} style={{minWidth:220}}>
-                  <div className="muted" style={{fontSize:12}}>{key.replace('_',' ').toUpperCase()}</div>
-                  <input className="input" value={editing[key] ?? ''}
-                    onChange={e=> setEditing(v=>({...v,[key]: ['cost_price','sell_price','on_hand'].includes(key) ? toNumber(e.target.value) : e.target.value}))}/>
+                <div key={key} style="min-width:220px">
+                  <div className="muted" style="font-size:12px">{key.replace('_',' ').toUpperCase()}</div>
+                  <input className="input" value={editing[key] ?? ''} onChange={e=> setEditing(v=>({...v,[key]: ['cost_price','sell_price','on_hand'].includes(key) ? toNumber(e.target.value) : e.target.value}))}/>
                 </div>
               ))}
-              <div style={{width:'100%'}}>
-                <div className="muted" style={{fontSize:12}}>DESCRIPTION</div>
-                <textarea className="input" rows="3" value={editing.description} onChange={e=> setEditing(v=>({...v, description:e.target.value}))}/>
+              <div style="width:100%">
+                <div className="muted" style="font-size:12px">DESCRIPTION</div>
+                <textarea className="input" rows="3" value={editing.description} onChange={e=> setEditing(v=>({...v, description:e.target.value}))}></textarea>
               </div>
-              <div style={{width:'100%'}}>
-                <div className="muted" style={{fontSize:12}}>TASTING NOTES</div>
-                <textarea className="input" rows="2" value={editing.tasting_notes} onChange={e=> setEditing(v=>({...v, tasting_notes:e.target.value}))}/>
+              <div style="width:100%">
+                <div className="muted" style="font-size:12px">TASTING NOTES</div>
+                <textarea className="input" rows="2" value={editing.tasting_notes} onChange={e=> setEditing(v=>({...v, tasting_notes:e.target.value}))}></textarea>
               </div>
-              <div style={{width:'100%'}}>
-                <div className="muted" style={{fontSize:12}}>FOOD PAIRINGS</div>
-                <textarea className="input" rows="2" value={editing.food_pairings} onChange={e=> setEditing(v=>({...v, food_pairings:e.target.value}))}/>
+              <div style="width:100%">
+                <div className="muted" style="font-size:12px">FOOD PAIRINGS</div>
+                <textarea className="input" rows="2" value={editing.food_pairings} onChange={e=> setEditing(v=>({...v, food_pairings:e.target.value}))}></textarea>
               </div>
             </div>
           </div>
@@ -343,13 +329,13 @@
               <div className="grow"></div>
               <button className="btn" onClick={()=> setCustomerView(v=>!v)}>Customer</button>
               <button className="btn" onClick={()=> setAdmin(v=>!v)}>Admin</button>
-              <div className="row" style={{position:'relative'}}>
-                <input className="input" style={{width:260}} placeholder="Search products, vendors, notes…" value={query} onChange={e=>setQuery(e.target.value)}/>
+              <div className="row" style="position:relative">
+                <input className="input" style="width:260px" placeholder="Search products, vendors, notes…" value={query} onChange={e=>setQuery(e.target.value)}/>
               </div>
             </div>
           </div>
 
-          <div className="container" style={{paddingTop:16}}>
+          <div className="container" style="padding-top:16px">
             <div className="summary no-print">
               <SummaryCard title="Inventory Cost" value={currency(totals.cost)} />
               <SummaryCard title="Retail Value" value={currency(totals.retail)} />
@@ -358,54 +344,53 @@
             </div>
           </div>
 
-          {/* Filters */}
           {showFilters && (
             <div className="filters no-print">
               <div>
-                <div className="muted" style={{fontSize:12}}>Category</div>
+                <div className="muted" style="font-size:12px">Category</div>
                 <select className="select" value={filters.category} onChange={e=> setFilters(v=>({...v, category:e.target.value}))}>
-                  {['', ...new Set(categories)].map(c=> <option key={c} value={c}>{c || 'All'}</option>)}
+                  {categories.map(c=> <option key={c} value={c}>{c || 'All'}</option>)}
                 </select>
               </div>
               <div>
-                <div className="muted" style={{fontSize:12}}>Country</div>
+                <div className="muted" style="font-size:12px">Country</div>
                 <select className="select" value={filters.country} onChange={e=> setFilters(v=>({...v, country:e.target.value}))}>
-                  {['', ...new Set(countries)].map(c=> <option key={c} value={c}>{c || 'All'}</option>)}
+                  {countries.map(c=> <option key={c} value={c}>{c || 'All'}</option>)}
                 </select>
               </div>
               <div>
-                <div className="muted" style={{fontSize:12}}>Vendor</div>
+                <div className="muted" style="font-size:12px">Vendor</div>
                 <select className="select" value={filters.vendor} onChange={e=> setFilters(v=>({...v, vendor:e.target.value}))}>
-                  {['', ...new Set(vendors)].map(c=> <option key={c} value={c}>{c || 'All'}</option>)}
+                  {vendors.map(c=> <option key={c} value={c}>{c || 'All'}</option>)}
                 </select>
               </div>
               <div>
-                <div className="muted" style={{fontSize:12}}>Stock</div>
+                <div className="muted" style="font-size:12px">Stock</div>
                 <select className="select" value={filters.stock} onChange={e=> setFilters(v=>({...v, stock:e.target.value}))}>
                   <option value="">All</option>
                   <option value="in">In stock</option>
                   <option value="out">Out of stock</option>
                 </select>
               </div>
-              <div style={{gridColumn:'span 2'}}>
-                <div className="muted" style={{fontSize:12}}>Price Range: ${filters.priceRange[0]} – ${filters.priceRange[1]}</div>
+              <div style="grid-column:span 2">
+                <div className="muted" style="font-size:12px">Price Range: ${filters.priceRange[0]} – ${filters.priceRange[1]}</div>
                 <input type="range" min="0" max="200" step="1" value={filters.priceRange[0]} onChange={e=> setFilters(v=>({...v, priceRange:[Number(e.target.value), v.priceRange[1]]}))}/>
                 <input type="range" min="0" max="200" step="1" value={filters.priceRange[1]} onChange={e=> setFilters(v=>({...v, priceRange:[v.priceRange[0], Number(e.target.value)]}))}/>
               </div>
             </div>
           )}
 
-          {/* Toolbar */}
-          <div className="container no-print" style={{display:'flex', alignItems:'center', gap:8, paddingTop:8, paddingBottom:8}}>
+          <div className="container no-print" style="display:flex;align-items:center;gap:8px;padding-top:8px;padding-bottom:8px">
             {admin && (
               <>
                 <button className="btn" onClick={()=> setEditing(emptyProduct())}>Add Product</button>
-                <input id="fileInput" type="file" accept=".csv" style={{display:'none'}} onChange={(e)=> importCSV(e.target.files?.[0])}/>
-                <label for="fileInput" className="btn" style="cursor:pointer;">Import CSV</label>
+                <input id="fileInput" type="file" accept=".csv" style="display:none" onChange={(e)=> importCSV(e.target.files?.[0])}/>
+                <!-- FIX: htmlFor + React style object -->
+                <label htmlFor="fileInput" className="btn" style={{cursor:'pointer'}}>Import CSV</label>
                 <button className="btn" onClick={exportCSV}>Export CSV</button>
                 <button className="btn" onClick={downloadTemplate}>Template</button>
-                <div className="row" style={{marginLeft:8}}>
-                  <input className="input" placeholder="Published Google Sheet CSV URL" style={{width:360}} value={gsheetUrl} onChange={e=> setGsheetUrl(e.target.value)}/>
+                <div className="row" style="margin-left:8px">
+                  <input className="input" placeholder="Published Google Sheet CSV URL" style="width:360px" value={gsheetUrl} onChange={e=> setGsheetUrl(e.target.value)}/>
                   <button className="btn" onClick={async()=>{
                     try{
                       const rows = await fetchPublishedCSV(gsheetUrl)
@@ -445,39 +430,19 @@
             <div className="row muted">Items: {filtered.length}</div>
           </div>
 
-          {/* Store settings (Admin) */}
-          {admin && (
-            <div className="container">
-              <div className="card"><div className="content">
-                <div className="title">Store Settings</div>
-                <div className="row" style={{gap:12, flexWrap:'wrap'}}>
-                  <div><div className="muted" style={{fontSize:12}}>Store Name</div><input className="input" value={store.name} onChange={e=> setStore({...store, name:e.target.value})}/></div>
-                  <div><div className="muted" style={{fontSize:12}}>Phone</div><input className="input" value={store.phone} onChange={e=> setStore({...store, phone:e.target.value})}/></div>
-                  <div style={{minWidth:320}}><div className="muted" style={{fontSize:12}}>Address</div><input className="input" value={store.address} onChange={e=> setStore({...store, address:e.target.value})}/></div>
-                  <div><div className="muted" style={{fontSize:12}}>Sales Tax (%)</div><input className="input" value={store.taxRate} onChange={e=> setStore({...store, taxRate: toNumber(e.target.value)||0})}/></div>
-                  <div style={{minWidth:320}}><div className="muted" style={{fontSize:12}}>Logo URL</div><input className="input" placeholder="https://.../logo.png" value={store.logoUrl} onChange={e=> setStore({...store, logoUrl:e.target.value})}/></div>
-                  <div><div className="muted" style={{fontSize:12}}>Brand Color (hex)</div><input className="input" placeholder="#23c55e" value={store.primaryColor} onChange={e=> setStore({...store, primaryColor:e.target.value})}/></div>
-                </div>
-              </div></div>
-            </div>
-          )}
-
-          {/* Products */}
           <div className="container">
             <div className="grid">
               {filtered.map(p=> <ProductCard key={p.id} p={p} />)}
             </div>
           </div>
 
-          {/* Editor */}
           {editing && <ProductEditor />}
 
-          {/* Shelf tags modal */}
           {showTags && (
             <div className="tags-modal" onClick={()=> setShowTags(false)}>
               <div className="tags-sheet" onClick={(e)=> e.stopPropagation()}>
-                <div className="row" style={{justifyContent:'space-between', marginBottom:8}}>
-                  <div style={{fontWeight:700}}>Shelf Tags Preview</div>
+                <div className="row" style="justify-content:space-between;margin-bottom:8px">
+                  <div style="font-weight:700">Shelf Tags Preview</div>
                   <div className="row">
                     <button className="btn" onClick={()=> setShowTags(false)}>Close</button>
                     <button className="btn" onClick={()=> window.print()}>Print</button>
@@ -486,16 +451,16 @@
                 <div className="print-grid">
                   {products.filter(p=> selected.has(p.id)).map(p=> (
                     <div key={p.id} className="card"><div className="content">
-                      <div className="row" style={{gap:8, alignItems:'center'}}>
-                        {!!store.logoUrl && <img src={store.logoUrl} alt="logo" style={{width:22, height:22}}/>}
-                        <div className="muted" style={{fontSize:12}}>{store.name || 'Store'}</div>
+                      <div className="row" style="gap:8px;align-items:center">
+                        {!!store.logoUrl && <img src={store.logoUrl} alt="logo" style="width:22px;height:22px"/>}
+                        <div className="muted" style="font-size:12px">{store.name || 'Store'}</div>
                       </div>
-                      <div style={{fontWeight:700, lineHeight:1.2}}>{p.name}</div>
-                      <div className="muted" style={{fontSize:12}}>{p.size || p.category}</div>
-                      <div style={{fontSize:24, fontWeight:800, color: store.primaryColor}}>{currency(toNumber(p.sell_price)||0)}</div>
-                      {!!p.tasting_notes && <div style={{fontSize:12, marginTop:6}}>{p.tasting_notes}</div>}
-                      {!!p.food_pairings && <div className="muted" style={{fontSize:11, marginTop:4}}>Pairs: {p.food_pairings}</div>}
-                      {!!p.upc && <div className="muted" style={{fontSize:11, marginTop:8}}>UPC: {p.upc}</div>}
+                      <div style="font-weight:700;line-height:1.2">{p.name}</div>
+                      <div className="muted" style="font-size:12px">{p.size || p.category}</div>
+                      <div style={`font-size:24px;font-weight:800;color:${store.primaryColor}`}>{currency(toNumber(p.sell_price)||0)}</div>
+                      {!!p.tasting_notes && <div style="font-size:12px;margin-top:6px">{p.tasting_notes}</div>}
+                      {!!p.food_pairings && <div className="muted" style="font-size:11px;margin-top:4px">Pairs: {p.food_pairings}</div>}
+                      {!!p.upc && <div className="muted" style="font-size:11px;margin-top:8px">UPC: {p.upc}</div>}
                     </div></div>
                   ))}
                 </div>
@@ -503,14 +468,16 @@
             </div>
           )}
 
-          <div className="container muted" style={{fontSize:12, textAlign:'center', padding:'24px 0'}}>
-            © {new Date().getFullYear()} {store.name || 'Your Store'}
+          <div className="container muted" style="font-size:12px;text-align:center;padding:24px 0">
+            © <span id="year"></span> {store.name || 'Your Store'}
           </div>
         </div>
       )
     }
 
     ReactDOM.createRoot(document.getElementById('root')).render(<App />)
+    document.getElementById('year').textContent = new Date().getFullYear()
   </script>
 </body>
 </html>
+
